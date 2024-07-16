@@ -1,0 +1,75 @@
+---
+- name: Openclassrooms P6 deployment
+  hosts: all
+
+  # Définition des tâches
+  tasks:
+    # On met à jour le serveur
+    - name: Upgrade server
+      ansible.builtin.apt:
+        update_cache: true
+        upgrade: true
+      # L'exécution de cette tâche nécessite d'utiliser les droits d'administration
+      # du compte utilisateur.
+      become: true
+
+    # On installe les dépendances nécessaires à la mise en place de notre service i.e.
+    # - Un serveur HTTP, qui sera utilisé pour servir l'application
+    # Dans notre cas, nous utiliserons Nginx
+    - name: Install nginx
+      ansible.builtin.apt:
+        name:
+          - nginx
+        update_cache: true
+      become: true
+
+    # On déploie la version de l'application sur notre serveur.
+    # Dans ce cas d'exemple, l'application est directement intégrée au répertoire
+    # de notre projet Ansible. Dans un cas réel, l'application serait certainement
+    # installée via un paquet ou récupérée depuis une source distante
+    # (une archive versionnée et signée par exemple).
+    - name: Copy app
+      ansible.builtin.copy:
+        src: app/olympic-games-starter
+        dest: /var/www/html
+        mode: u+rw,g+r
+      become: true
+
+    # Suppression du serveur Nginx par défaut
+    - name: Remove nginx default server
+      ansible.builtin.file:
+        state: absent
+        dest: /etc/nginx/sites-enabled/default
+      become: true
+
+    # Déploiement de la configuration Nginx pour l'application
+    # Voir le fichier nginx/app.conf pour plus de détails.
+    - name: Deploy app nginx configuration
+      ansible.builtin.copy:
+        src: nginx/app.conf
+        dest: /etc/nginx/sites-available/app
+        mode: u+rw,g+r
+      become: true
+      # On "notifie" le handler afin de rédémarrer automatiquement
+      # le service Nginx en cas de changement sur cette tâche.
+      notify:
+        - Restart nginx
+
+    # Activation de la configuration Nginx de l'application
+    - name: Activate app configuration
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/app
+        dest: /etc/nginx/sites-enabled/app
+        state: link
+      become: true
+      notify:
+        - Restart nginx
+
+  # Définition des handlers
+  handlers:
+    # Ce handler redémarre le service nginx
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+      become: true
